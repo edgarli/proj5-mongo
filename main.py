@@ -28,7 +28,8 @@ import datetime # But we may still need time
 from dateutil import tz  # For interpreting local times
 
 # Mongo database
-from pymongo import MongoClient
+from pymongo import MongoClient, DESCENDING
+from bson import ObjectId
 
 
 ###
@@ -63,6 +64,33 @@ def index():
       app.logger.debug("Memo: " + str(memo))
   return flask.render_template('index.html')
 
+@app.route("/create_memo", methods=["POST"])
+def create_memo():
+    app.logger.debug("Create memo entry")
+    # first get params from form
+    time = request.form['time']
+    text = request.form['text']
+    # if params invalid return error
+    if not time or not text:
+        return 'params invalid'
+    # transfer string to arrow, if failed return error
+    try: 
+        dt = arrow.get(time, 'YYYY-MM-DDTHH:mm')
+    except:
+        return 'params invalid'
+    put_memo(dt, text);
+    # return ok
+    return "ok"
+
+@app.route("/remove_memo", methods=["POST"])
+def remove_memo():
+    app.logger.debug("Remove memo entry")
+    # first get params from form
+    id = request.form['id']
+    # remove memo
+    del_memo(id)
+    return 'ok'
+    
 
 # We don't have an interface for creating memos yet
 # @app.route("/create")
@@ -126,27 +154,40 @@ def get_memos():
     can be inserted directly in the 'session' object.
     """
     records = [ ]
-    for record in collection.find( { "type": "dated_memo" } ):
+    # fetch record with type=dated_memo and order by date desc
+    for record in collection.find({"type": "dated_memo"}).sort('date',
+            DESCENDING):
         record['date'] = arrow.get(record['date']).isoformat()
+        # we need _id to find and delete the memo
+        record['id'] = '%s' % record['_id']
         del record['_id']
         records.append(record)
     return records 
 
 
-# def put_memo(dt, mem):
-#     """
-#     Place memo into database
-#     Args:
-#        dt: Datetime (arrow) object
-#        mem: Text of memo
-#     NOT TESTED YET
-#     """
-#     record = { "type": "dated_memo", 
-#                "date": dt.to('utc').naive,
-#                "text": mem
-#             }
-#     collection.insert(record)
-#     return 
+def put_memo(dt, mem):
+    """
+    Place memo into database
+    Args:
+    dt: Datetime (arrow) object
+    mem: Text of memo
+    NOT TESTED YET
+    """
+    record = { "type": "dated_memo", 
+        "date": dt.to('utc').naive,
+        "text": mem,
+    }
+    collection.insert(record)
+    return 
+
+def del_memo(id):
+    """
+    Remove memo from database
+    Args:
+    id: Mongodb _id
+    """
+    collection.remove({'_id': ObjectId(id)})
+    return;
 
 
 if __name__ == "__main__":
